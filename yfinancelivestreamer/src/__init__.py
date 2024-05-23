@@ -1,10 +1,13 @@
 import websockets
+import asyncio
 import base64
 import json
 
 from .yfin_pb2 import yaticker
 from typing import List
-from objs import PriceData
+from google.protobuf.json_format import MessageToDict
+
+from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 
 
 class YahooFinanceStreamer(object):
@@ -18,19 +21,21 @@ class YahooFinanceStreamer(object):
 
         return json.dumps(sub_msg)
     
-    def __process_msg(self, msg: str):
+    def __process_msg(self, msg: str, callback):
         message_bytes = base64.b64decode(msg)
         self.__proto_buf.ParseFromString(message_bytes)
 
-        data = PriceData(self.__proto_buf)
-
-        print(data)
+        callback(MessageToDict(self.__proto_buf))
 
 
-    async def get_stream(self):
-        async with websockets.connect(self.__websocket_uri) as yfinance_ws:
-            await yfinance_ws.send(self.__make_subscribe_msg())
+    async def get_stream(self, callback):
+        while True:
+            try:
+                async with websockets.connect(self.__websocket_uri) as yfinance_ws:
+                    await yfinance_ws.send(self.__make_subscribe_msg())
 
-            while yfinance_ws.open:
-                self.__process_msg(await yfinance_ws.recv())
-                
+                    while yfinance_ws.open:
+                        self.__process_msg(await yfinance_ws.recv(), callback=callback)
+            
+            except (ConnectionClosedError, ConnectionClosedOK) as WebsocketError:
+                await asyncio.sleep(1)
