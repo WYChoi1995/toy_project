@@ -1,2 +1,2 @@
-webosockets
+websockets
 protobuf-compiler
