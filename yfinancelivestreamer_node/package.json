@@ -1,0 +1,17 @@
+{
+    "name": "yahoolivestreamer",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.js",
+    "scripts": {
+      "start": "node main.js"
+    },
+    "dependencies": {
+      "protobufjs": "^6.11.2",
+      "ws": "^8.4.0"
+    },
+    "devDependencies": {},
+    "author": "",
+    "license": "ISC"
+  }
+  
