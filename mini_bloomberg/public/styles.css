@@ -1,0 +1,137 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #121212;
+    color: #ffffff;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.container {
+    display: flex;
+    width: 90%;
+    height: 90%;
+    border: 1px solid #444;
+    background-color: #1e1e1e;
+}
+
+.price-table {
+    flex: 3;
+    border: 1px solid #444;
+    margin: 10px;
+    padding: 10px;
+    background-color: #1e1e1e;
+    display: flex;
+    flex-direction: column;
+}
+
+.table-container {
+    overflow-y: auto;
+    height: 70vh; /* Fixed height for the table body */
+}
+
+.price-table table {
+    width: 100%;
+    border-collapse: collapse;
+    flex-grow: 1;
+}
+
+.price-table th, .price-table td {
+    border: 1px solid #444;
+    padding: 5px;
+    text-align: center;
+}
+
+.narrow {
+    width: 10%;
+}
+
+.wide {
+    width: 25%;
+}
+
+.price-table p {
+    margin: 10px 0 0;
+}
+
+.change-negative {
+    color: rgb(115, 164, 255);
+}
+
+.change-positive {
+    color: rgb(255, 128, 128);
+}
+
+.sidebar {
+    flex: 1;
+    border: 1px solid #444;
+    margin: 10px;
+    padding: 10px;
+    background-color: #1e1e1e;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    overflow-y: auto;
+}
+
+.ticker-subscription ul {
+    list-style-type: none;
+    padding: 0;
+}
+
+.ticker-subscription li {
+    cursor: pointer;
+    margin-bottom: 5px;
+    padding: 5px;
+    border: 1px solid #444;
+    background-color: #2e2e2e;
+}
+
+.console {
+    flex: 1;
+    border: 1px solid #444;
+    margin-top: 10px;
+    padding: 5px;
+    overflow-y: scroll;
+    background-color: #1e1e1e;
+    max-height: 150px;
+}
+
+button {
+    margin-left: 10px;
+    background-color: #444;
+    color: #ffffff;
+    border: none;
+    padding: 5px 10px;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #666;
+}
+
+input {
+    background-color: #333;
+    color: #ffffff;
+    border: 1px solid #444;
+    padding: 5px;
+    flex: 1;
+}
+
+.input-group {
+    display: flex;
+    align-items: center;
+}
+
+.twinkle {
+    animation: twinkle 0.5s ease-in-out;
+}
+
+@keyframes twinkle {
+    0% { background-color: rgba(255, 255, 255, 0.88); }
+    100% { background-color: transparent; }
+}
