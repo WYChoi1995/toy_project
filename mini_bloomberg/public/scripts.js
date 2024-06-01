@@ -8,7 +8,6 @@ document.addEventListener("DOMContentLoaded", function() {
     const socket = io();
 
     function addTickers() {
-
         const tickers = tickerInput.value.toUpperCase().split(',').map(ticker => ticker.trim());
         tickers.forEach(ticker => {
             if (ticker && !isTickerSubscribed(ticker)) {
@@ -20,7 +19,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 }
 
                 else{
-                    socket.emit('subscribe', [ticker]);
+                    socket.emit('tradfiSubscribe', [ticker]);
                 }
                     
             } else {
@@ -51,7 +50,8 @@ document.addEventListener("DOMContentLoaded", function() {
     function addSubscription(ticker) {
         const listItem = document.createElement("li");
         listItem.textContent = ticker;
-        listItem.addEventListener("click", function() {
+        listItem.setAttribute("draggable", true);
+        listItem.addEventListener("dblclick", function() {
             subscriptionList.removeChild(listItem);
             removeTableRow(ticker);
             logConsole(`Unsubscribed from ${ticker}`);
@@ -61,9 +61,14 @@ document.addEventListener("DOMContentLoaded", function() {
             }
 
             else{
-                socket.emit('unsubscribe', [ticker]);
+                socket.emit('tradfiUnsubscribe', [ticker]);
             }
         });
+
+        listItem.addEventListener("dragstart", handleDragStart);
+        listItem.addEventListener("dragover", handleDragOver);
+        listItem.addEventListener("drop", handleDrop);
+        listItem.addEventListener("dragend", handleDragEnd);
         subscriptionList.appendChild(listItem);
         logConsole(`Subscribed to ${ticker}`);
     }
@@ -143,7 +148,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 row.cells[3].textContent = formmatedChange;
                 row.cells[4].textContent = parseFloat(data.P).toFixed(4);
 
-                const priceColorClass = formmatedChange < 0 ? 'change-negative' : 'change-positive';
+                const priceColorClass = data.p < 0 ? 'change-negative' : 'change-positive';
                 row.cells[2].className = priceColorClass;
                 row.cells[3].className = priceColorClass;
                 row.cells[4].className = priceColorClass;
@@ -154,5 +159,70 @@ document.addEventListener("DOMContentLoaded", function() {
                 }, 500);
             }
         });
-    })
+    });
+
+    let dragSrcEl = null;
+
+    function handleDragStart(e) {
+        dragSrcEl = this;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/html', this.outerHTML);
+        this.classList.add('dragElem');
+    }
+
+    function handleDragOver(e) {
+        if (e.preventDefault) {
+            e.preventDefault();
+        }
+        e.dataTransfer.dropEffect = 'move';
+        return false;
+    }
+
+    function handleDrop(e) {
+        if (e.stopPropagation) {
+            e.stopPropagation();
+        }
+        if (dragSrcEl !== this) {
+            dragSrcEl.outerHTML = this.outerHTML;
+            this.outerHTML = e.dataTransfer.getData('text/html');
+
+            initializeDragAndDrop();
+
+            updateTableRows();
+        }
+        return false;
+    }
+
+    function handleDragEnd(e) {
+        this.classList.remove('dragElem');
+    }
+
+    function initializeDragAndDrop() {
+        const listItems = subscriptionList.getElementsByTagName("li");
+        for (let i = 0; i < listItems.length; i++) {
+            listItems[i].addEventListener("dragstart", handleDragStart);
+            listItems[i].addEventListener("dragover", handleDragOver);
+            listItems[i].addEventListener("drop", handleDrop);
+            listItems[i].addEventListener("dragend", handleDragEnd);
+            listItems[i].addEventListener("dblclick", function() {
+                const ticker = listItems[i].textContent;
+                console.log(`Removing subscription for: ${ticker}`); // Debug log
+                subscriptionList.removeChild(listItems[i]);
+                removeTableRow(ticker);
+                logConsole(`Unsubscribed from ${ticker}`);
+                socket.emit('unsubscribe', [ticker]);
+            });
+        }
+    }
+
+    function updateTableRows() {
+        const tickers = Array.from(subscriptionList.getElementsByTagName("li")).map(li => li.textContent);
+        const rows = Array.from(priceTable.querySelectorAll('tr[data-ticker]'));
+        rows.forEach(row => priceTable.deleteRow(row.rowIndex - 1)); // Clear existing rows
+
+        tickers.forEach(ticker => addTableRow(ticker)); // Re-add rows in the new order
+    }
+
+    initializeDragAndDrop();
+
 });

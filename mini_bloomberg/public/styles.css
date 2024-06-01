@@ -50,20 +50,17 @@ body {
     width: 10%;
 }
 
-.wide {
-    width: 25%;
-}
 
 .price-table p {
     margin: 10px 0 0;
 }
 
 .change-negative {
-    color: rgb(115, 164, 255);
+    color: rgb(255, 90, 90);
 }
 
 .change-positive {
-    color: rgb(255, 128, 128);
+    color: rgb(73, 255, 73);
 }
 
 .sidebar {
