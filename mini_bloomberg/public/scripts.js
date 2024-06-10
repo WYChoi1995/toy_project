@@ -1,4 +1,16 @@
 document.addEventListener("DOMContentLoaded", function() {
+    if (Notification.permission !== 'granted') {
+        Notification.requestPermission().then(permission => {
+            if (permission === 'granted') {
+            
+            }
+
+            else {
+                alert('Permission for notifications was denied');
+            }
+        });
+    }
+
     const priceTable = document.getElementById("priceTable").getElementsByTagName('tbody')[0];
     const subscriptionList = document.getElementById("subscriptionList");
     const consoleLog = document.getElementById("consoleLog");
@@ -16,16 +28,12 @@ document.addEventListener("DOMContentLoaded", function() {
 
                 if (ticker.endsWith("USDT")){
                     socket.emit('cryptoSubscribe', [ticker]);
-                }
-
-                else{
+                } else {
                     socket.emit('tradfiSubscribe', [ticker]);
                 }
-                    
-            } else {
-
             }
         });
+
         tickerInput.value = "";
     }
 
@@ -58,9 +66,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
             if (ticker.endsWith("USDT")){
                 socket.emit('cryptoUnsubscribe', [ticker]);
-            }
-
-            else{
+            } else {
                 socket.emit('tradfiUnsubscribe', [ticker]);
             }
         });
@@ -81,13 +87,21 @@ document.addEventListener("DOMContentLoaded", function() {
         row.insertCell(2).textContent = "-";
         row.insertCell(3).textContent = "-";
         row.insertCell(4).textContent = "-";
+        row.insertCell(5).innerHTML = '<input type="number" class="alert-price" />';
+        row.insertCell(6).innerHTML = `
+            <select class="alert-condition">
+                <option value="above">Above</option>
+                <option value="below">Below</option>
+            </select>
+        `;
+        row.insertCell(7).innerHTML = '<input type="checkbox" class="activate-alert" />';
     }
 
     function removeTableRow(ticker) {
         const rows = priceTable.querySelectorAll('tr[data-ticker]');
         rows.forEach(row => {
             if (row.getAttribute('data-ticker') === ticker) {
-                priceTable.deleteRow(row.rowIndex - 1);
+                priceTable.deleteRow(row.rowIndex);
             }
         });
     }
@@ -105,6 +119,39 @@ document.addEventListener("DOMContentLoaded", function() {
 
     function formatPrice(price) {
         return parseFloat(price).toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+    }
+
+    function checkAlerts(ticker, price) {
+        const row = priceTable.querySelector(`tr[data-ticker="${ticker}"]`);
+        const alertPriceInput = row.querySelector('.alert-price');
+        const alertConditionSelect = row.querySelector('.alert-condition');
+        const activateAlertCheckbox = row.querySelector('.activate-alert');
+    
+        if (activateAlertCheckbox.checked) {
+            const alertPrice = parseFloat(alertPriceInput.value);
+            const alertCondition = alertConditionSelect.value;
+    
+            if (!isNaN(alertPrice)) {
+                if (alertCondition === "above" && price > alertPrice) {
+                    showNotification(`Price rise: ${ticker}`, `Price has reached the alert level of ${formatPrice(alertPrice)}`);
+                    activateAlertCheckbox.checked = false;
+                }
+
+                else if (alertCondition === "below" && price < alertPrice) {
+                    showNotification(`Price decline: ${ticker}`, `Price has reached the alert level of ${formatPrice(alertPrice)}`);
+                    activateAlertCheckbox.checked = false;
+                }
+            }
+        }
+    }
+
+    function showNotification(title, body) {
+        if (Notification.permission === 'granted') {
+            new Notification(title, { body: body, requireInteraction: true });
+
+        } else {
+            console.log('Notification permission not granted');
+        }
     }
 
     socket.on('priceUpdate', (data) => {
@@ -130,6 +177,8 @@ document.addEventListener("DOMContentLoaded", function() {
                 setTimeout(() => {
                     priceCell.classList.remove('twinkle');
                 }, 500);
+
+                checkAlerts(data.id, parseFloat(data.price));
             }
         });
     });
@@ -157,6 +206,8 @@ document.addEventListener("DOMContentLoaded", function() {
                 setTimeout(() => {
                     priceCell.classList.remove('twinkle');
                 }, 500);
+
+                checkAlerts(data.s, parseFloat(data.c));
             }
         });
     });
@@ -206,11 +257,16 @@ document.addEventListener("DOMContentLoaded", function() {
             listItems[i].addEventListener("dragend", handleDragEnd);
             listItems[i].addEventListener("dblclick", function() {
                 const ticker = listItems[i].textContent;
-                console.log(`Removing subscription for: ${ticker}`); // Debug log
+                console.log(`Removing subscription for: ${ticker}`);
                 subscriptionList.removeChild(listItems[i]);
                 removeTableRow(ticker);
                 logConsole(`Unsubscribed from ${ticker}`);
-                socket.emit('unsubscribe', [ticker]);
+    
+                if (ticker.endsWith("USDT")){
+                    socket.emit('cryptoUnsubscribe', [ticker]);
+                } else {
+                    socket.emit('tradfiUnsubscribe', [ticker]);
+                }
             });
         }
     }
@@ -218,11 +274,10 @@ document.addEventListener("DOMContentLoaded", function() {
     function updateTableRows() {
         const tickers = Array.from(subscriptionList.getElementsByTagName("li")).map(li => li.textContent);
         const rows = Array.from(priceTable.querySelectorAll('tr[data-ticker]'));
-        rows.forEach(row => priceTable.deleteRow(row.rowIndex - 1)); // Clear existing rows
+        rows.forEach(row => priceTable.deleteRow(row.rowIndex - 1));
 
-        tickers.forEach(ticker => addTableRow(ticker)); // Re-add rows in the new order
+        tickers.forEach(ticker => addTableRow(ticker));
     }
 
     initializeDragAndDrop();
-
 });

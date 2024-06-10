@@ -14,16 +14,17 @@
                 <table id="priceTable">
                     <thead>
                         <tr>
-                            <th>Last UpdateTime (UTC)</th>
-                            <th class="narrow">Ticker</th>
+                            <th>Last Update</th>
+                            <th>Ticker</th>
                             <th>Price</th>
                             <th>Change</th>
-                            <th>ChangePercent (%)</th>
+                            <th>Change%</th>
+                            <th>Alert Price</th>
+                            <th>Condition</th>
+                            <th>Alert OnOff</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        <!-- Dynamic rows will be added here -->
-                    </tbody>
+                    <tbody></tbody>
                 </table>
             </div>
         </div>
@@ -34,7 +35,7 @@
                     <!-- Dynamic subscription list items -->
                 </ul>
                 <div class="input-group">
-                    <input type="text" id="tickerInput" placeholder="GOOG, TSLA, AMZN">
+                    <input type="text" id="tickerInput" placeholder="NVDA, BTCUSDT, ^NDX">
                     <button id="addButton">ADD</button>
                 </div>
             </div>
