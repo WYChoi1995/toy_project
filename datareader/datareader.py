@@ -9,7 +9,7 @@ class KlineDataDownloader(object):
     GLOBAL_FINANCE_DATA_VALID_INTERVAL = ['1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '1d', '5d', '1wk', '1mo', '3mo']
     CRYPTO_VALID_INTERVAL = ['1s', '1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M']
     TIME_FACTORS = {'s': 1000, 'm': 60000, 'h': 3600000, 'd': 86400000, 'w': 604800000, 'M': 2592000000}
-    GLOBAL_MIN_CANDLE_LIMIT = 7 * 24 * 60 * 60
+    GLOBAL_CANDLE_LIMITS = {'m': 7 * 24 * 60 * 60, 'h': 30 * 24 * 60 * 60, 'd': 365 * 24 * 60}
     AVAILABLE_DOWNLOAD_TYPE = ["KOREA_STOCK", "GLOBAL_FINANCE", "CRYPTO_SPOT", "CRYPTO_FUTURES"]
 
     def __init__(self):
@@ -26,6 +26,10 @@ class KlineDataDownloader(object):
     def __convert_interval_to_ms(interval: str):
         return int(interval[:-1]) * KlineDataDownloader.TIME_FACTORS[interval[-1]]
     
+    @staticmethod
+    def __convert_interval_to_sec(interval: str):
+        return int(interval[:-1]) * KlineDataDownloader.GLOBAL_CANDLE_LIMITS[interval[-1]]
+
     @staticmethod
     def __convert_datetime_to_ts(date: int, is_milli: bool = False):
         datetime_obj = datetime.strptime(str(date), '%Y%m%d%H%M')
@@ -75,11 +79,12 @@ class KlineDataDownloader(object):
     async def __get_global_finance_data(self, session, ticker, interval, start, end, file_path):
         url = f'{self.__yahoo_finance_uri}{ticker}'
         datas = []
+        interval_convert = self.__convert_interval_to_sec(interval)
         end_time = self.__convert_datetime_to_ts(end)
         last_end_time = self.__convert_datetime_to_ts(start)
         
         while end_time > last_end_time:
-            start_time = end_time - KlineDataDownloader.GLOBAL_MIN_CANDLE_LIMIT
+            start_time = end_time - interval_convert
             resp  = await self.__fetch_data_tradfi(session, url, params={'interval': interval, 'period1': start_time, 'period2': end_time})
 
             if resp['chart']['result'] is not None:
