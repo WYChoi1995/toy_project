@@ -9,6 +9,7 @@ class KlineDataDownloader(object):
     GLOBAL_FINANCE_DATA_VALID_INTERVAL = ['1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '1d', '5d', '1wk', '1mo', '3mo']
     CRYPTO_VALID_INTERVAL = ['1s', '1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M']
     TIME_FACTORS = {'s': 1000, 'm': 60000, 'h': 3600000, 'd': 86400000, 'w': 604800000, 'M': 2592000000}
+    GLOBAL_MIN_CANDLE_LIMIT = 7 * 24 * 60 * 60
 
     def __init__(self):
         self.__binance_spot_uri = 'https://api.binance.com/api/v3/klines'
@@ -19,7 +20,6 @@ class KlineDataDownloader(object):
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
         }
         self.__crypto_rate_count = 0
-        self.__global_min_candle_limit = 7 * 24 * 60 * 60
     
     @staticmethod
     def _convert_interval_to_ms(interval: str):
@@ -78,7 +78,7 @@ class KlineDataDownloader(object):
         last_end_time = self._convert_datetime_to_ts(start)
         
         while end_time > last_end_time:
-            start_time = end_time - self.__global_min_candle_limit
+            start_time = end_time - KlineDataDownloader.GLOBAL_MIN_CANDLE_LIMIT
             resp  = await self._fetch_data_tradfi(session, url, params={'interval': interval, 'period1': start_time, 'period2': end_time})
 
             if resp['chart']['result'] is not None:
