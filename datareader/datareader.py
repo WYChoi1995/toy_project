@@ -2,6 +2,7 @@ import aiohttp
 import asyncio
 import logging
 import pandas as pd
+from datetime import datetime
 
 class KlineDataDownloader(object):
     KOREA_STOCK_VALID_INTERVAL = ['minute', 'minute3', 'minute5', 'minute10', 'minute30', 'minute60', 'day', 'week', 'month']
@@ -17,6 +18,27 @@ class KlineDataDownloader(object):
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
         }
         self.__crypto_rate_count = 0
+        self.__global_min_candle_limit = 7 * 24 * 60 * 60
+    
+    @staticmethod
+    def _convert_datetime_to_ts(date: int, is_milli: bool = False):
+        datetime_obj = datetime.strptime(str(date), '%Y%m%d%H%M')
+
+        if is_milli:
+            return 1000 * int(datetime_obj.timestamp())
+        
+        else:
+            return int(datetime_obj.timestamp())
+        
+    @staticmethod
+    def _convert_ts_to_datetime(date: int, is_milli: bool = False):
+        datetime_obj = datetime.strptime(str(date), '%Y%m%d%H%M')
+
+        if is_milli:
+            return 1000 * int(datetime_obj.timestamp())
+        
+        else:
+            return int(datetime_obj.timestamp())
     
     async def _fetch_data_crypto(self, session, url, params):
         async with session.get(url, params=params) as response:
@@ -37,6 +59,7 @@ class KlineDataDownloader(object):
 
         if 'code' not in resp:
             df = pd.DataFrame(resp)
+            df.drop_duplicates(inplace=True, subset=['localDateTime'])
             df.set_index('localDateTime', inplace=True)
             df.index = pd.to_datetime(df.index, format='%Y%m%d%H%M%S')
             df.sort_index(inplace=True)
@@ -51,47 +74,60 @@ class KlineDataDownloader(object):
         Datetime Format: YYYYMMDDHHMM
         '''
         url = f'{self.__yahoo_finance_uri}{ticker}'
-
-        resp  = await self._fetch_data_tradfi(session, url, params={'interval': interval, 'startTime': start, 'endTime': end})
-
-        if 'error' not in resp['chart'].keys():
-            try:
-                ohlcv = resp['chart']['result'][0]['indicators']['quote'][0]
-                adj_close = resp['chart']['result'][0]['indicators']['adjclose'][0]['adjclose']
-                
-                data = {
-                            'timestamp': resp['chart']['result'][1]['timestamp'],
-                            'open': ohlcv['open'],
-                            'high': ohlcv['high'],
-                            'low': ohlcv['low'],
-                            'close': ohlcv['close'],
-                            'volume': ohlcv['volume'],
-                            'adj_close': adj_close
-                        }
-            
-            except KeyError:
-                ohlcv = resp['chart']['result'][0]['indicators']['quote'][0]
-                
-                data = {
-                            'timestamp': resp['chart']['result'][0]['timestamp'],
-                            'open': ohlcv['open'],
-                            'high': ohlcv['high'],
-                            'low': ohlcv['low'],
-                            'close': ohlcv['close'],
-                            'volume': ohlcv['volume']
-                        }
-            
-            df = pd.DataFrame(data)
-            df.set_index('timestamp', inplace=True)
-            df.index = pd.to_datetime(df.index, unit='s')
-            df.sort_index(inplace=True)
-            df.ffill(inplace=True)
-            df.to_csv(file_path)
+        datas = []
+        end_time = self._convert_datetime_to_ts(end)
+        last_end_time = self._convert_datetime_to_ts(start)
         
-        else:
-            logging.error('Fetcherror: {}'.format(resp['chart']['error']))
+        while end_time > last_end_time:
+            start_time = end_time - self.__global_min_candle_limit
+            resp  = await self._fetch_data_tradfi(session, url, params={'interval': interval, 'period1': start_time, 'period2': end_time})
 
-    async def _get_binance_futures_data(self, session, ticker, interval ,data_range, file_path):
+            if resp['chart']['result'] is not None:
+                try:
+                    ohlcv = resp['chart']['result'][0]['indicators']['quote'][0]
+                    adj_close = resp['chart']['result'][0]['indicators']['adjclose'][0]['adjclose']
+                    
+                    data = {
+                                'timestamp': resp['chart']['result'][1]['timestamp'],
+                                'open': ohlcv['open'],
+                                'high': ohlcv['high'],
+                                'low': ohlcv['low'],
+                                'close': ohlcv['close'],
+                                'volume': ohlcv['volume'],
+                                'adj_close': adj_close
+                            }
+                    
+                    datas.append(data)
+
+                except KeyError:
+                    ohlcv = resp['chart']['result'][0]['indicators']['quote'][0]
+                    
+                    data = {
+                                'timestamp': resp['chart']['result'][0]['timestamp'],
+                                'open': ohlcv['open'],
+                                'high': ohlcv['high'],
+                                'low': ohlcv['low'],
+                                'close': ohlcv['close'],
+                                'volume': ohlcv['volume']
+                            }
+                    
+                    datas.append(data)
+
+                end_time = start_time
+            
+            else:
+                logging.error('Fetcherror: {}'.format(resp['chart']['error']))
+                break
+        
+        df = pd.concat([pd.DataFrame(data) for data in datas], axis=0)
+        df.drop_duplicates(inplace=True, subset=['timestamp'])
+        df.set_index('timestamp', inplace=True)
+        df.index = pd.to_datetime(df.index, unit='s')
+        df.sort_index(inplace=True)
+        df.ffill(inplace=True)
+        df.to_csv(file_path)
+
+    async def _get_binance_futures_data(self, session, ticker, interval, data_range, file_path):
         candle_datas = []
         is_first_req = True
         last_candle_time = 0
@@ -102,7 +138,7 @@ class KlineDataDownloader(object):
                 self.__crypto_rate_count = 0
 
             if is_first_req:
-                params = {"symbol": f"{ticker}USDT", "interval": interval, "limit": 499}
+                params = {'symbol': f'{ticker}USDT', 'interval': interval, 'limit': 499}
                 resp = await self._fetch_data_crypto(session, self.__binance_futures_uri, params)
 
                 if 'code' not in resp:
@@ -111,11 +147,11 @@ class KlineDataDownloader(object):
                     is_first_req = False
 
                 else:
-                    logging.error()
+                    logging.error(f'{resp}')
                     break
 
             else:
-                params = {"symbol": f"{ticker}USDT", "interval": interval, "endTime": last_candle_time, "limit": 499}
+                params = {'symbol': f'{ticker}USDT', 'interval': interval, 'endTime': last_candle_time, 'limit': 499}
                 resp = await self._fetch_data_crypto(session, self.__binance_futures_uri, params)
                 
                 if 'code' not in resp:    
@@ -123,7 +159,7 @@ class KlineDataDownloader(object):
                     candle_datas.append(resp)
 
                 else:
-                    logging.error()
+                    logging.error(f'{resp}')
                     break
 
             data_range -= 499
@@ -154,19 +190,27 @@ class KlineDataDownloader(object):
             if is_first_req:
                 params = {"symbol": f"{ticker}USDT", "interval": interval}
                 resp = await self._fetch_data_crypto(session, self.__binance_spot_uri, params)
-                try:
+
+                if 'code' not in resp:   
                     last_candle_time = resp[0][0]
                     candle_datas.append(resp)
                     is_first_req = False
 
-                except KeyError:
-                    pass
+                else:
+                    logging.error(f'{resp}')
+                    break
 
             else:
                 params = {"symbol": f"{ticker}USDT", "interval": interval, "endTime": last_candle_time}
                 resp = await self._fetch_data_crypto(session, self.__binance_spot_uri, params)
-                last_candle_time = resp[0][0]
-                candle_datas.append(resp)
+
+                if 'code' not in resp:   
+                    last_candle_time = resp[0][0]
+                    candle_datas.append(resp)
+                
+                else:
+                    logging.error(f'{resp}')
+                    break
             
             data_range -= 500
     
@@ -191,12 +235,12 @@ class KlineDataDownloader(object):
             tasks = [self._get_korea_stock_data(session, ticker, interval, start, end, f'./{ticker}.csv') for ticker in tickers]
             await asyncio.gather(*tasks)
     
-    async def get_multiple_global_finance_data(self, tickers,  interval, data_range):
+    async def get_multiple_global_finance_data(self, tickers,  interval, start, end):
         if interval not in KlineDataDownloader.GLOBAL_FINANCE_DATA_VALID_INTERVAL:
             raise ValueError(f'Invalid interval, Valid interval is {KlineDataDownloader.GLOBAL_FINANCE_DATA_VALID_INTERVAL}')
         
         async with aiohttp.ClientSession() as session:
-            tasks = [self._get_global_finance_data(session, ticker, interval, data_range, f'./{ticker}.csv') for ticker in tickers]
+            tasks = [self._get_global_finance_data(session, ticker, interval, start, end, f'./{ticker}.csv') for ticker in tickers]
             await asyncio.gather(*tasks)
 
     async def get_multiple_binance_spot_data(self, tickers, interval, data_range):
@@ -219,4 +263,4 @@ class KlineDataDownloader(object):
 if __name__ == '__main__':
     parser = KlineDataDownloader()
 
-    asyncio.run(parser.get_multiple_global_finance_data(['NVDA', 'AAPL'], '1m', '60d'))
+    asyncio.run(parser.get_multiple_global_finance_data(['AAPL', 'NVDA'], '1h', 202306020900, 202407260900))
