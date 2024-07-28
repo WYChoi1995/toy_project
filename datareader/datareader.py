@@ -46,13 +46,13 @@ class KlineDataDownloader(object):
         else:
             logging.error(f'Error on fetching: Code {resp.code} Msg {resp.message}')
     
-    async def _get_global_finance_data(self, session, ticker, interval, data_range, file_path):
+    async def _get_global_finance_data(self, session, ticker, interval, start, end, file_path):
         '''
         Datetime Format: YYYYMMDDHHMM
         '''
         url = f'{self.__yahoo_finance_uri}{ticker}'
 
-        resp  = await self._fetch_data_tradfi(session, url, params={'interval': interval, 'range': data_range})
+        resp  = await self._fetch_data_tradfi(session, url, params={'interval': interval, 'startTime': start, 'endTime': end})
 
         if 'error' not in resp['chart'].keys():
             try:
@@ -104,16 +104,28 @@ class KlineDataDownloader(object):
             if is_first_req:
                 params = {"symbol": f"{ticker}USDT", "interval": interval, "limit": 499}
                 resp = await self._fetch_data_crypto(session, self.__binance_futures_uri, params)
-                last_candle_time = resp[0][0]
-                candle_datas.append(resp)
-                is_first_req = False
+
+                if 'code' not in resp:
+                    last_candle_time = resp[0][0]
+                    candle_datas.append(resp)
+                    is_first_req = False
+
+                else:
+                    logging.error()
+                    break
 
             else:
                 params = {"symbol": f"{ticker}USDT", "interval": interval, "endTime": last_candle_time, "limit": 499}
                 resp = await self._fetch_data_crypto(session, self.__binance_futures_uri, params)
-                last_candle_time = resp[0][0]
-                candle_datas.append(resp)
-            
+                
+                if 'code' not in resp:    
+                    last_candle_time = resp[0][0]
+                    candle_datas.append(resp)
+
+                else:
+                    logging.error()
+                    break
+
             data_range -= 499
     
         df = pd.DataFrame([candle_datum for candle_data in candle_datas for candle_datum in candle_data])[[0,1,2,3,4,5,9]]
