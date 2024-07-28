@@ -8,6 +8,7 @@ class KlineDataDownloader(object):
     KOREA_STOCK_VALID_INTERVAL = ['minute', 'minute3', 'minute5', 'minute10', 'minute30', 'minute60', 'day', 'week', 'month']
     GLOBAL_FINANCE_DATA_VALID_INTERVAL = ['1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '1d', '5d', '1wk', '1mo', '3mo']
     CRYPTO_VALID_INTERVAL = ['1s', '1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M']
+    TIME_FACTORS = {'s': 1000, 'm': 60000, 'h': 3600000, 'd': 86400000, 'w': 604800000, 'M': 2592000000}
 
     def __init__(self):
         self.__binance_spot_uri = 'https://api.binance.com/api/v3/klines'
@@ -19,6 +20,10 @@ class KlineDataDownloader(object):
         }
         self.__crypto_rate_count = 0
         self.__global_min_candle_limit = 7 * 24 * 60 * 60
+    
+    @staticmethod
+    def _convert_interval_to_ms(interval: str):
+        return int(interval[:-1]) * KlineDataDownloader.TIME_FACTORS[interval[-1]]
     
     @staticmethod
     def _convert_datetime_to_ts(date: int, is_milli: bool = False):
@@ -127,42 +132,30 @@ class KlineDataDownloader(object):
         df.ffill(inplace=True)
         df.to_csv(file_path)
 
-    async def _get_binance_futures_data(self, session, ticker, interval, data_range, file_path):
+    async def _get_binance_futures_data(self, session, ticker, interval, start, end, file_path):
         candle_datas = []
-        is_first_req = True
-        last_candle_time = 0
-    
-        while data_range > 0:
+        interval_convert = self._convert_interval_to_ms(interval)
+        start_time = self._convert_datetime_to_ts(start, True)
+        end_time = self._convert_datetime_to_ts(end, True)
+        temp_start = end_time - 499 * interval_convert
+
+        while temp_start > start_time:
             if self.__crypto_rate_count >= 1500:
                 await asyncio.sleep(60)
                 self.__crypto_rate_count = 0
 
-            if is_first_req:
-                params = {'symbol': f'{ticker}USDT', 'interval': interval, 'limit': 499}
-                resp = await self._fetch_data_crypto(session, self.__binance_futures_uri, params)
+            params = {'symbol': ticker, 'interval': interval, 'startTime': temp_start, 'endTime': end_time}
+            resp = await self._fetch_data_crypto(session, self.__binance_futures_uri, params)
 
-                if 'code' not in resp:
-                    last_candle_time = resp[0][0]
-                    candle_datas.append(resp)
-                    is_first_req = False
-
-                else:
-                    logging.error(f'{resp}')
-                    break
+            if 'code' not in resp:
+                candle_datas.append(resp)
 
             else:
-                params = {'symbol': f'{ticker}USDT', 'interval': interval, 'endTime': last_candle_time, 'limit': 499}
-                resp = await self._fetch_data_crypto(session, self.__binance_futures_uri, params)
-                
-                if 'code' not in resp:    
-                    last_candle_time = resp[0][0]
-                    candle_datas.append(resp)
+                logging.error(f'{resp}')
+                break
 
-                else:
-                    logging.error(f'{resp}')
-                    break
-
-            data_range -= 499
+            end_time = temp_start
+            temp_start = end_time - 499 * interval_convert
     
         df = pd.DataFrame([candle_datum for candle_data in candle_datas for candle_datum in candle_data])[[0,1,2,3,4,5,9]]
         df.columns = ['time', 'open', 'high', 'low', 'close', 'volume', 'takerBuyBase']
@@ -177,43 +170,31 @@ class KlineDataDownloader(object):
         df.sort_index(inplace=True)
         df.to_csv(file_path)
     
-    async def _get_binance_spot_data(self, session, ticker, interval ,data_range, file_path):
+    async def _get_binance_spot_data(self, session, ticker, interval ,start, end, file_path):
         candle_datas = []
-        is_first_req = True
-        last_candle_time = 0
-    
-        while data_range > 0:
+        interval_convert = self._convert_interval_to_ms(interval)
+        start_time = self._convert_datetime_to_ts(start, True)
+        end_time = self._convert_datetime_to_ts(end, True)
+        temp_start = end_time - 500 * interval_convert
+
+        while temp_start > start_time:
             if self.__crypto_rate_count >= 1500:
                 await asyncio.sleep(60)
                 self.__crypto_rate_count = 0
 
-            if is_first_req:
-                params = {"symbol": f"{ticker}USDT", "interval": interval}
-                resp = await self._fetch_data_crypto(session, self.__binance_spot_uri, params)
+            params = {'symbol': ticker, 'interval': interval, 'startTime': temp_start, 'endTime': end_time}
+            resp = await self._fetch_data_crypto(session, self.__binance_spot_uri, params)
 
-                if 'code' not in resp:   
-                    last_candle_time = resp[0][0]
-                    candle_datas.append(resp)
-                    is_first_req = False
-
-                else:
-                    logging.error(f'{resp}')
-                    break
+            if 'code' not in resp:   
+                candle_datas.append(resp)
 
             else:
-                params = {"symbol": f"{ticker}USDT", "interval": interval, "endTime": last_candle_time}
-                resp = await self._fetch_data_crypto(session, self.__binance_spot_uri, params)
-
-                if 'code' not in resp:   
-                    last_candle_time = resp[0][0]
-                    candle_datas.append(resp)
-                
-                else:
-                    logging.error(f'{resp}')
-                    break
+                logging.error(f'{resp}')
+                break
             
-            data_range -= 500
-    
+            end_time = temp_start
+            temp_start = end_time - 500 * interval_convert
+
         df = pd.DataFrame([candle_datum for candle_data in candle_datas for candle_datum in candle_data])[[0,1,2,3,4,5,9]]
         df.columns = ['time', 'open', 'high', 'low', 'close', 'volume', 'takerBuyBase']
         df['open'] = df['open'].astype(float)
@@ -243,24 +224,24 @@ class KlineDataDownloader(object):
             tasks = [self._get_global_finance_data(session, ticker, interval, start, end, f'./{ticker}.csv') for ticker in tickers]
             await asyncio.gather(*tasks)
 
-    async def get_multiple_binance_spot_data(self, tickers, interval, data_range):
+    async def get_multiple_binance_spot_data(self, tickers, interval, start, end):
         if interval not in KlineDataDownloader.CRYPTO_VALID_INTERVAL:
             raise ValueError(f'Invalid interval, Valid interval is {KlineDataDownloader.CRYPTO_VALID_INTERVAL}')
 
         async with aiohttp.ClientSession() as session:
-            tasks = [self._get_binance_spot_data(session, ticker, interval, data_range, f'./{ticker}.csv') for ticker in tickers]
+            tasks = [self._get_binance_spot_data(session, ticker, interval, start, end, f'./{ticker}_S.csv') for ticker in tickers]
             await asyncio.gather(*tasks)   
 
-    async def get_multiple_binance_futures_data(self, tickers, interval, data_range):
+    async def get_multiple_binance_futures_data(self, tickers, interval, start, end):
         if interval not in KlineDataDownloader.CRYPTO_VALID_INTERVAL:
             raise ValueError(f'Invalid interval, Valid interval is {KlineDataDownloader.CRYPTO_VALID_INTERVAL}')
         
         async with aiohttp.ClientSession() as session:
-            tasks = [self._get_binance_futures_data(session, ticker, interval, data_range, f'./{ticker}.csv') for ticker in tickers]
+            tasks = [self._get_binance_futures_data(session, ticker, interval, start, end, f'./{ticker}_F.csv') for ticker in tickers]
             await asyncio.gather(*tasks)
 
 
 if __name__ == '__main__':
     parser = KlineDataDownloader()
 
-    asyncio.run(parser.get_multiple_global_finance_data(['AAPL', 'NVDA'], '1h', 202306020900, 202407260900))
+    asyncio.run(parser.get_multiple_binance_futures_data(['BTCUSDT'], '1m', 202306020900, 202407260900))
