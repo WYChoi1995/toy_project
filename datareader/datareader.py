@@ -55,9 +55,6 @@ class KlineDataDownloader(object):
             return await response.json()
     
     async def _get_korea_stock_data(self, session, ticker, interval, start, end, file_path):
-        '''
-        Datetime Format: YYYYMMDDHHMM
-        '''
         url = f'{self.__naver_finance_uri}{ticker}/{interval}'
 
         resp = await self._fetch_data_tradfi(session, url, params={'startDateTime': start, 'endDateTime': end})
@@ -75,9 +72,6 @@ class KlineDataDownloader(object):
             logging.error(f'Error on fetching: Code {resp.code} Msg {resp.message}')
     
     async def _get_global_finance_data(self, session, ticker, interval, start, end, file_path):
-        '''
-        Datetime Format: YYYYMMDDHHMM
-        '''
         url = f'{self.__yahoo_finance_uri}{ticker}'
         datas = []
         end_time = self._convert_datetime_to_ts(end)
@@ -209,6 +203,9 @@ class KlineDataDownloader(object):
         df.to_csv(file_path)
     
     async def get_multiple_korea_stock_data(self, tickers, interval, start, end):
+        '''
+        Datetime Format: YYYYMMDDHHMM
+        '''
         if interval not in KlineDataDownloader.KOREA_STOCK_VALID_INTERVAL:
             raise ValueError(f'Invalid interval, Valid interval is {KlineDataDownloader.KOREA_STOCK_VALID_INTERVAL}')
 
@@ -217,6 +214,9 @@ class KlineDataDownloader(object):
             await asyncio.gather(*tasks)
     
     async def get_multiple_global_finance_data(self, tickers,  interval, start, end):
+        '''
+        Datetime Format: YYYYMMDDHHMM
+        '''
         if interval not in KlineDataDownloader.GLOBAL_FINANCE_DATA_VALID_INTERVAL:
             raise ValueError(f'Invalid interval, Valid interval is {KlineDataDownloader.GLOBAL_FINANCE_DATA_VALID_INTERVAL}')
         
@@ -225,6 +225,9 @@ class KlineDataDownloader(object):
             await asyncio.gather(*tasks)
 
     async def get_multiple_binance_spot_data(self, tickers, interval, start, end):
+        '''
+        Datetime Format: YYYYMMDDHHMM
+        '''
         if interval not in KlineDataDownloader.CRYPTO_VALID_INTERVAL:
             raise ValueError(f'Invalid interval, Valid interval is {KlineDataDownloader.CRYPTO_VALID_INTERVAL}')
 
@@ -233,6 +236,9 @@ class KlineDataDownloader(object):
             await asyncio.gather(*tasks)   
 
     async def get_multiple_binance_futures_data(self, tickers, interval, start, end):
+        '''
+        Datetime Format: YYYYMMDDHHMM
+        '''
         if interval not in KlineDataDownloader.CRYPTO_VALID_INTERVAL:
             raise ValueError(f'Invalid interval, Valid interval is {KlineDataDownloader.CRYPTO_VALID_INTERVAL}')
         
