@@ -268,8 +268,3 @@ class KlineDataDownloader(object):
             
             elif download_type == 'CRYPTO_FUTURES':
                 asyncio.run(self.__get_multiple_binance_futures_data(tickers, interval, start, end))
-
-
-if __name__ == '__main__':
-    parser = KlineDataDownloader()
-    parser.download_data('CRYPTO_SPOT', ['BTCUSDT', 'ETHUSDT'], '1m', 202407200000, 202407270000)
