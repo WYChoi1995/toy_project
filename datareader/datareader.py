@@ -6,11 +6,11 @@ from datetime import datetime
 
 class KlineDataDownloader(object):
     KOREA_STOCK_VALID_INTERVAL = ['minute', 'minute3', 'minute5', 'minute10', 'minute30', 'minute60', 'day', 'week', 'month']
-    GLOBAL_FINANCE_DATA_VALID_INTERVAL = ['1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '1d', '5d', '1wk', '1mo', '3mo']
+    GLOBAL_FINANCE_DATA_VALID_INTERVAL = ['1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '1d']
     CRYPTO_VALID_INTERVAL = ['1s', '1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M']
-    TIME_FACTORS = {'s': 1000, 'm': 60000, 'h': 3600000, 'd': 86400000, 'w': 604800000, 'M': 2592000000}
-    GLOBAL_CANDLE_LIMITS = {'m': 7 * 24 * 60 * 60, 'h': 30 * 24 * 60 * 60, 'd': 365 * 24 * 60}
-    AVAILABLE_DOWNLOAD_TYPE = ["KOREA_STOCK", "GLOBAL_FINANCE", "CRYPTO_SPOT", "CRYPTO_FUTURES"]
+    TIME_FACTORS = {'s': 1000, 'm': 60 * 1000, 'h': 3600 * 1000, 'd': 86400 * 1000, 'w': 604800 * 1000, 'M': 2592000 * 1000}
+    GLOBAL_CANDLE_LIMITS = {'m': 7 * 24 * 60 * 60, 'h': 30 * 24 * 60 * 60, 'd': 365 * 24 * 60 * 60}
+    AVAILABLE_DOWNLOAD_TYPE = ['KOREA_STOCK', 'GLOBAL_FINANCE', 'CRYPTO_SPOT', 'CRYPTO_FUTURES']
 
     def __init__(self):
         self.__binance_spot_uri = 'https://api.binance.com/api/v3/klines'
@@ -93,7 +93,7 @@ class KlineDataDownloader(object):
                     adj_close = resp['chart']['result'][0]['indicators']['adjclose'][0]['adjclose']
                     
                     data = {
-                                'timestamp': resp['chart']['result'][1]['timestamp'],
+                                'timestamp': resp['chart']['result'][0]['timestamp'],
                                 'open': ohlcv['open'],
                                 'high': ohlcv['high'],
                                 'low': ohlcv['low'],
@@ -257,19 +257,19 @@ class KlineDataDownloader(object):
             raise ValueError(f'Invalid download type, Valid type is {KlineDataDownloader.AVAILABLE_DOWNLOAD_TYPE}')
         
         else:
-            if download_type == "KOREA_STOCK":
+            if download_type == 'KOREA_STOCK':
                 asyncio.run(self.__get_multiple_korea_stock_data(tickers, interval, start, end))
             
-            elif download_type == "GLOBAL_FINANCE":
+            elif download_type == 'GLOBAL_FINANCE':
                 asyncio.run(self.__get_multiple_global_finance_data(tickers, interval, start, end))
             
-            elif download_type == "CRYPTO_SPOT":
+            elif download_type == 'CRYPTO_SPOT':
                 asyncio.run(self.__get_multiple_binance_spot_data(tickers, interval, start, end))
             
-            elif download_type == "CRYPTO_FUTURES":
+            elif download_type == 'CRYPTO_FUTURES':
                 asyncio.run(self.__get_multiple_binance_futures_data(tickers, interval, start, end))
 
 
 if __name__ == '__main__':
     parser = KlineDataDownloader()
-    parser.download_data("KOREA_STOCK", ["005930", "000660"], "minute", 202407190000, 202407261530)
+    parser.download_data('CRYPTO_SPOT', ['BTCUSDT', 'ETHUSDT'], '1m', 202407200000, 202407270000)
