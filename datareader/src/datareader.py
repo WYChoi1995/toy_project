@@ -7,10 +7,11 @@ from datetime import datetime
 class KlineDataDownloader(object):
     KOREA_STOCK_VALID_INTERVAL = ['minute', 'minute3', 'minute5', 'minute10', 'minute30', 'minute60', 'day', 'week', 'month']
     GLOBAL_FINANCE_DATA_VALID_INTERVAL = ['1m', '2m', '5m', '15m', '30m', '60m', '90m', '1h', '1d']
-    CRYPTO_VALID_INTERVAL = ['1s', '1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M']
+    CRYPTO_BINANCE_VALID_INTERVAL = ['1s', '1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M']
+    CRYTPO_UPBIT_VALID_INTERVAL = ['1m', '3m', '5m', '10m', '15m', '30m', '60m', '240m', '1d', '1w', '1M']
     TIME_FACTORS = {'s': 1000, 'm': 60 * 1000, 'h': 3600 * 1000, 'd': 86400 * 1000, 'w': 604800 * 1000, 'M': 2592000 * 1000}
     GLOBAL_CANDLE_LIMITS = {'m': 7 * 24 * 60 * 60, 'h': 30 * 24 * 60 * 60, 'd': 365 * 24 * 60 * 60}
-    AVAILABLE_DOWNLOAD_TYPE = ['KOREA_STOCK', 'GLOBAL_FINANCE', 'CRYPTO_SPOT', 'CRYPTO_FUTURES']
+    AVAILABLE_DOWNLOAD_TYPE = ['KOREA_STOCK', 'GLOBAL_FINANCE', 'CRYPTO_SPOT_BINANCE', 'CRYPTO_FUTURES_BINANCE', 'CRYPTO_SPOT_UPBIT']
 
     def __init__(self):
         self.__binance_spot_uri = 'https://api.binance.com/api/v3/klines'
@@ -49,6 +50,11 @@ class KlineDataDownloader(object):
         
         else:
             return int(datetime_obj.timestamp())
+    
+    @staticmethod
+    def __convert_datetime_to_iso8061(date: int):
+        str_date = str(date)
+        return f'{str_date[:4]}-{str_date[4:6]}-{str_date[6:8]}T{str_date[8:10]}:{str_date[10:12]}:{str_date[12:14]}Z'
     
     async def _fetch_data_crypto(self, session, url, params):
         async with session.get(url, params=params) as response:
@@ -207,7 +213,15 @@ class KlineDataDownloader(object):
         df.set_index('time', inplace=True)
         df.sort_index(inplace=True)
         df.to_csv(file_path)
-    
+
+    async def __get_upbit_spot_data(self, session, ticker, interval, start, end, file_path):
+        '''
+        Datetime Format: YYYYMMDDHHMM
+        '''
+        candle_datas = []
+        end_time = self.__convert_datetime_to_iso8061(end)
+        
+
     async def __get_multiple_korea_stock_data(self, tickers, interval, start, end):
         '''
         Datetime Format: YYYYMMDDHHMM
@@ -234,8 +248,8 @@ class KlineDataDownloader(object):
         '''
         Datetime Format: YYYYMMDDHHMM
         '''
-        if interval not in KlineDataDownloader.CRYPTO_VALID_INTERVAL:
-            raise ValueError(f'Invalid interval, Valid interval is {KlineDataDownloader.CRYPTO_VALID_INTERVAL}')
+        if interval not in KlineDataDownloader.CRYPTO_BINANCE_VALID_INTERVAL:
+            raise ValueError(f'Invalid interval, Valid interval is {KlineDataDownloader.CRYPTO_BINANCE_VALID_INTERVAL}')
 
         async with aiohttp.ClientSession() as session:
             tasks = [self.__get_binance_spot_data(session, ticker, interval, start, end, f'./{ticker}_S.csv') for ticker in tickers]
@@ -245,8 +259,8 @@ class KlineDataDownloader(object):
         '''
         Datetime Format: YYYYMMDDHHMM
         '''
-        if interval not in KlineDataDownloader.CRYPTO_VALID_INTERVAL:
-            raise ValueError(f'Invalid interval, Valid interval is {KlineDataDownloader.CRYPTO_VALID_INTERVAL}')
+        if interval not in KlineDataDownloader.CRYPTO_BINANCE_VALID_INTERVAL:
+            raise ValueError(f'Invalid interval, Valid interval is {KlineDataDownloader.CRYPTO_BINANCE_VALID_INTERVAL}')
         
         async with aiohttp.ClientSession() as session:
             tasks = [self.__get_binance_futures_data(session, ticker, interval, start, end, f'./{ticker}_F.csv') for ticker in tickers]
@@ -263,8 +277,8 @@ class KlineDataDownloader(object):
             elif download_type == 'GLOBAL_FINANCE':
                 asyncio.run(self.__get_multiple_global_finance_data(tickers, interval, start, end))
             
-            elif download_type == 'CRYPTO_SPOT':
+            elif download_type == 'CRYPTO_SPOT_BINANCE':
                 asyncio.run(self.__get_multiple_binance_spot_data(tickers, interval, start, end))
             
-            elif download_type == 'CRYPTO_FUTURES':
+            elif download_type == 'CRYPTO_FUTURES_BINANCE':
                 asyncio.run(self.__get_multiple_binance_futures_data(tickers, interval, start, end))
