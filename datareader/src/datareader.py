@@ -2,6 +2,7 @@ import aiohttp
 import asyncio
 import logging
 import pandas as pd
+import re
 from datetime import datetime
 
 class KlineDataDownloader(object):
@@ -18,10 +19,13 @@ class KlineDataDownloader(object):
         self.__binance_futures_uri = 'https://fapi.binance.com/fapi/v1/klines'
         self.__naver_finance_uri = 'https://api.stock.naver.com/chart/domestic/item/'
         self.__yahoo_finance_uri = 'https://query1.finance.yahoo.com/v8/finance/chart/'
+        self.__upbit_spot_uri = 'https://api.upbit.com/v1/candles/'
         self.__headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
         }
-        self.__crypto_rate_count = 0
+        self.__binance_rate_count = 0
+        self.__upbit_rate_count_sec = 9
+        self.__upbit_rate_count_min = 600
     
     @staticmethod
     def __convert_interval_to_ms(interval: str):
@@ -54,11 +58,47 @@ class KlineDataDownloader(object):
     @staticmethod
     def __convert_datetime_to_iso8061(date: int):
         str_date = str(date)
-        return f'{str_date[:4]}-{str_date[4:6]}-{str_date[6:8]}T{str_date[8:10]}:{str_date[10:12]}:{str_date[12:14]}Z'
+        return f'{str_date[:4]}-{str_date[4:6]}-{str_date[6:8]}T{str_date[8:10]}:{str_date[10:12]}:00Z'
     
-    async def _fetch_data_crypto(self, session, url, params):
+    @staticmethod
+    def __determine_interval(interval: str):
+        if 'm' in interval:
+            return f'minutes/{interval[:-1]}'
+
+        elif 'd' in interval:
+            return 'days'
+        
+        elif 'w' in interval:
+            return 'weeks'
+        
+        elif 'M' in interval:
+            return 'months'
+        
+        else:
+            raise ValueError(f'Unsupported interval {interval}')
+    
+    @staticmethod
+    def __parse_time_values(input_string: str):
+        min_match = re.search(r'min=(\d+)', input_string)
+        sec_match = re.search(r'sec=(\d+)', input_string)
+
+        if min_match and sec_match:
+            min_value = int(min_match.group(1))
+            sec_value = int(sec_match.group(1))
+
+            return min_value, sec_value
+        
+        else:
+            return None, None
+    
+    async def __fetch_data_crypto(self, session, url, params, is_binance=True):
         async with session.get(url, params=params) as response:
-            self.__crypto_rate_count = float(response.headers.get('X-MBX-USED-WEIGHT-1M'))
+            if is_binance:
+                self.__binance_rate_count = float(response.headers.get('X-MBX-USED-WEIGHT-1M'))
+
+            else:
+                self.__upbit_rate_count_min, self.__upbit_rate_count_sec = self.__parse_time_values(response.headers.get('Remaining-Req'))
+                
             return await response.json()
     
     async def __fetch_data_tradfi(self, session, url, params):
@@ -146,12 +186,12 @@ class KlineDataDownloader(object):
         temp_start = end_time - 499 * interval_convert
 
         while temp_start > start_time:
-            if self.__crypto_rate_count >= 1500:
+            if self.__binance_rate_count >= 1500:
                 await asyncio.sleep(60)
-                self.__crypto_rate_count = 0
+                self.__binance_rate_count = 0
 
             params = {'symbol': ticker, 'interval': interval, 'startTime': temp_start, 'endTime': end_time}
-            resp = await self._fetch_data_crypto(session, self.__binance_futures_uri, params)
+            resp = await self.__fetch_data_crypto(session, self.__binance_futures_uri, params)
 
             if 'code' not in resp:
                 candle_datas.append(resp)
@@ -184,12 +224,12 @@ class KlineDataDownloader(object):
         temp_start = end_time - 500 * interval_convert
 
         while temp_start > start_time:
-            if self.__crypto_rate_count >= 1500:
+            if self.__binance_rate_count >= 1500:
                 await asyncio.sleep(60)
-                self.__crypto_rate_count = 0
+                self.__binance_rate_count = 0
 
             params = {'symbol': ticker, 'interval': interval, 'startTime': temp_start, 'endTime': end_time}
-            resp = await self._fetch_data_crypto(session, self.__binance_spot_uri, params)
+            resp = await self.__fetch_data_crypto(session, self.__binance_spot_uri, params)
 
             if 'code' not in resp:   
                 candle_datas.append(resp)
@@ -219,8 +259,34 @@ class KlineDataDownloader(object):
         Datetime Format: YYYYMMDDHHMM
         '''
         candle_datas = []
-        end_time = self.__convert_datetime_to_iso8061(end)
-        
+        end_time_param = self.__convert_datetime_to_iso8061(end)
+        start_time = self.__convert_datetime_to_ts(start, True)
+        end_time = self.__convert_datetime_to_ts(end, True)
+        url = f'{self.__upbit_spot_uri}{self.__determine_interval(interval)}'
+
+        while end_time > start_time:
+            if self.__upbit_rate_count_min < 10:
+                await asyncio.sleep(60)
+            
+            elif self.__upbit_rate_count_sec < 2:
+                await asyncio.sleep(1)
+            
+            else:
+                params = {'market': ticker, 'count': 200, 'to': end_time_param}
+                resp = await self.__fetch_data_crypto(session, url, params, False)
+
+                candle_datas.append(resp)
+                end_time_param = resp[-1]['candle_date_time_utc']
+                end_time = resp[-1]['timestamp']
+
+        df = pd.concat([pd.DataFrame(data) for data in candle_datas], axis=0)
+        df.columns = ['market', 'time', 'time_KST', 'open', 'high', 'low', 'close', 'ts', 'amt', 'volume', 'unit']
+        df.drop(columns=['market', 'time_KST', 'unit', 'ts'], inplace=True)
+        df.drop_duplicates(inplace=True, subset=['time'])
+        df.set_index('time', inplace=True)
+        df.index = pd.to_datetime(df.index)
+        df.sort_index(inplace=True)
+        df.to_csv(file_path)
 
     async def __get_multiple_korea_stock_data(self, tickers, interval, start, end):
         '''
@@ -252,7 +318,7 @@ class KlineDataDownloader(object):
             raise ValueError(f'Invalid interval, Valid interval is {KlineDataDownloader.CRYPTO_BINANCE_VALID_INTERVAL}')
 
         async with aiohttp.ClientSession() as session:
-            tasks = [self.__get_binance_spot_data(session, ticker, interval, start, end, f'./{ticker}_S.csv') for ticker in tickers]
+            tasks = [self.__get_binance_spot_data(session, ticker, interval, start, end, f'./{ticker}_S_BINANCE.csv') for ticker in tickers]
             await asyncio.gather(*tasks)   
 
     async def __get_multiple_binance_futures_data(self, tickers, interval, start, end):
@@ -263,7 +329,15 @@ class KlineDataDownloader(object):
             raise ValueError(f'Invalid interval, Valid interval is {KlineDataDownloader.CRYPTO_BINANCE_VALID_INTERVAL}')
         
         async with aiohttp.ClientSession() as session:
-            tasks = [self.__get_binance_futures_data(session, ticker, interval, start, end, f'./{ticker}_F.csv') for ticker in tickers]
+            tasks = [self.__get_binance_futures_data(session, ticker, interval, start, end, f'./{ticker}_F_BINANCE.csv') for ticker in tickers]
+            await asyncio.gather(*tasks)
+    
+    async def __get_multiple_upbit_spot_data(self, tickers, interval, start, end):
+        if interval not in KlineDataDownloader.CRYTPO_UPBIT_VALID_INTERVAL:
+            raise ValueError(f'Invalid interval, Valid interval is {KlineDataDownloader.CRYTPO_UPBIT_VALID_INTERVAL}')
+        
+        async with aiohttp.ClientSession() as session:
+            tasks = [self.__get_upbit_spot_data(session, ticker, interval, start, end, f'./{ticker}_S_UPBIT.csv') for ticker in tickers]
             await asyncio.gather(*tasks)
     
     def download_data(self, download_type, tickers, interval, start, end):
@@ -282,3 +356,6 @@ class KlineDataDownloader(object):
             
             elif download_type == 'CRYPTO_FUTURES_BINANCE':
                 asyncio.run(self.__get_multiple_binance_futures_data(tickers, interval, start, end))
+            
+            elif download_type == 'CRYPTO_SPOT_UPBIT':
+                asyncio.run(self.__get_multiple_upbit_spot_data(tickers, interval, start, end))
