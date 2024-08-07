@@ -213,6 +213,7 @@ class KlineDataDownloader(object):
         df['takerBuyBase'] = df['takerBuyBase'].astype(float)
         df.drop_duplicates(inplace=True, subset=['time'])
         df.set_index('time', inplace=True)
+        df.index = pd.to_datetime(df.index, unit='ms')
         df.sort_index(inplace=True)
         df.to_csv(file_path)
     
@@ -251,6 +252,7 @@ class KlineDataDownloader(object):
         df['takerBuyBase'] = df['takerBuyBase'].astype(float)
         df.drop_duplicates(inplace=True, subset=['time'])
         df.set_index('time', inplace=True)
+        df.index = pd.to_datetime(df.index, unit='s')
         df.sort_index(inplace=True)
         df.to_csv(file_path)
 
@@ -267,10 +269,12 @@ class KlineDataDownloader(object):
         while end_time > start_time:
             if self.__upbit_rate_count_min < 10:
                 await asyncio.sleep(60)
+                self.__upbit_rate_count_min = 600
             
             elif self.__upbit_rate_count_sec < 2:
                 await asyncio.sleep(1)
-            
+                self.__upbit_rate_count_sec = 9
+                
             else:
                 params = {'market': ticker, 'count': 200, 'to': end_time_param}
                 resp = await self.__fetch_data_crypto(session, url, params, False)
